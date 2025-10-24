@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kenlord Educational Institute SMS Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+<div class="container mt-5">
+    <h2 class="text-center mb-4">Kenlord Educational Institute Admin Dashboard</h2>
+
+    <!-- Flash messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        {% for category, message in messages %}
+            <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <div class="card p-4 shadow-sm mb-4">
+        <h4>Add New Category</h4>
+        <form action="{{ url_for('add_category') }}" method="POST" class="d-flex gap-2 mt-2">
+            <input type="text" name="name" class="form-control" placeholder="Enter category name" required>
+            <button class="btn btn-primary">Add</button>
+        </form>
+    </div>
+
+    <div class="card p-4 shadow-sm">
+        <h4 class="mb-3">All Categories</h4>
+        <table class="table table-bordered table-hover">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Category Name</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in categories %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ category.name }}</td>
+                    <td>
+    <a href="{{ url_for('view_contacts', category_id=category.id) }}" class="btn btn-sm btn-info">View</a>
+    <form action="{{ url_for('delete_category', id=category.id) }}" method="POST" class="d-inline" onsubmit="return confirm('Delete this category?');">
+        <button class="btn btn-danger btn-sm">Delete</button>
+    </form>
+</td>
+
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="3" class="text-center text-muted">No categories found</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
