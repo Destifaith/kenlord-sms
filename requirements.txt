@@ -1,8 +1,8 @@
 Flask
 Flask-SQLAlchemy
-Flask-Login
 pandas
 openpyxl
 python-dotenv
 requests
-Werkzeug
+flask-login
+gunicorn
