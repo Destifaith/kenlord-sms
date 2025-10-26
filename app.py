@@ -222,7 +222,21 @@ def logout():
     logout_user()
     flash('Logged out successfully!', 'info')
     return redirect(url_for('login'))
+    secret = request.args.get("key")
+    # Simple protection: require your secret key in the URL
+    if secret != os.getenv("SECRET_KEY"):
+        return "❌ Unauthorized access!", 403
 
+    from models import Category, Contact, User
+    try:
+        Contact.query.delete()
+        Category.query.delete()
+        # Uncomment next line if you also want to remove users
+        # User.query.delete()
+        db.session.commit()
+        return "✅ Database cleared successfully!"
+    except Exception as e:
+        return f"❌ Error clearing DB: {e}"
 
 if __name__ == '__main__':
     with app.app_context():
