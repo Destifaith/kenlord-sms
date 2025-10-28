@@ -9,6 +9,7 @@ from flask_login import (
     LoginManager, login_user, login_required,
     logout_user, current_user
 )
+import re
 from models import db, Category, Contact, User
 
 # Load environment variables
@@ -32,9 +33,49 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 login_manager.login_message_category = 'info'
 
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+# ===============================================================
+# 🔹 Phone Normalization & Formatting Helpers
+# ===============================================================
+def normalize_phone(phone):
+    """
+    Normalize Ghanaian phone numbers:
+    - Removes spaces and symbols
+    - Converts +233 to 0
+    - Ensures 10 digits and starts with 0
+    """
+    if not phone:
+        return ""
+
+    digits = re.sub(r'\D', '', phone)
+
+    if digits.startswith("233") and len(digits) == 12:
+        digits = "0" + digits[3:]
+    elif len(digits) == 9:
+        digits = "0" + digits
+
+    return digits
+
+
+def is_valid_ghanaian_number(phone):
+    """Check if the phone number is a valid Ghanaian number (10 digits, starts with 02–05)."""
+    return re.match(r"^0[2-5]\d{8}$", phone) is not None
+
+
+def format_pretty_phone(phone):
+    """
+    Convert 0244068898 → 0244 068 898
+    Keeps consistent spacing (4-3-3)
+    """
+    phone = normalize_phone(phone)
+    if len(phone) == 10:
+        return f"{phone[:4]} {phone[4:7]} {phone[7:]}"
+    return phone
 
 
 # ===============================================================
@@ -146,7 +187,7 @@ def upload_contacts(category_id):
             return redirect(url_for('view_contacts', category_id=category_id))
 
         existing_phones = set(
-            contact.phone for contact in Contact.query.filter_by(category_id=category_id).all()
+            contact.phone.replace(" ", "") for contact in Contact.query.filter_by(category_id=category_id).all()
         )
         added_count, skipped_count = 0, 0
 
@@ -155,12 +196,17 @@ def upload_contacts(category_id):
             name = str(row.get('Name', '')).strip() if 'Name' in df.columns else ''
             if not phone or phone == 'nan':
                 continue
-            if phone in existing_phones:
+
+            formatted_phone = format_pretty_phone(phone)
+            normalized_check = formatted_phone.replace(" ", "")
+
+            if normalized_check in existing_phones:
                 skipped_count += 1
                 continue
-            new_contact = Contact(name=name, phone=phone, category_id=category.id)
+
+            new_contact = Contact(name=name, phone=formatted_phone, category_id=category.id)
             db.session.add(new_contact)
-            existing_phones.add(phone)
+            existing_phones.add(normalized_check)
             added_count += 1
 
         db.session.commit()
@@ -174,7 +220,7 @@ def upload_contacts(category_id):
     return redirect(url_for('view_contacts', category_id=category_id))
 
 
-# --- Add, Edit, Delete Contacts (same as before) ---
+# --- Add Contact ---
 @app.route('/add_contact/<int:category_id>', methods=['POST'])
 @login_required
 def add_contact(category_id):
@@ -184,16 +230,23 @@ def add_contact(category_id):
     if not phone:
         flash("Phone number is required!", "danger")
         return redirect(url_for('view_contacts', category_id=category_id))
-    if Contact.query.filter_by(phone=phone, category_id=category_id).first():
+
+    formatted_phone = format_pretty_phone(phone)
+    normalized_check = formatted_phone.replace(" ", "")
+
+    existing = [c.phone.replace(" ", "") for c in category.contacts]
+    if normalized_check in existing:
         flash('This phone number already exists!', 'warning')
         return redirect(url_for('view_contacts', category_id=category_id))
-    new_contact = Contact(name=name, phone=phone, category_id=category.id)
+
+    new_contact = Contact(name=name, phone=formatted_phone, category_id=category.id)
     db.session.add(new_contact)
     db.session.commit()
     flash("Contact added successfully!", "success")
     return redirect(url_for('view_contacts', category_id=category_id))
 
 
+# --- Edit Contact ---
 @app.route('/edit_contact/<int:contact_id>', methods=['POST'])
 @login_required
 def edit_contact(contact_id):
@@ -203,17 +256,22 @@ def edit_contact(contact_id):
     if not new_phone:
         flash("Phone number is required!", "danger")
         return redirect(url_for('view_contacts', category_id=contact.category_id))
-    if new_phone != contact.phone:
-        duplicate = Contact.query.filter_by(phone=new_phone, category_id=contact.category_id).first()
-        if duplicate:
-            flash('Phone already exists!', 'warning')
-            return redirect(url_for('view_contacts', category_id=contact.category_id))
-    contact.name, contact.phone = new_name, new_phone
+
+    formatted_phone = format_pretty_phone(new_phone)
+    normalized_check = formatted_phone.replace(" ", "")
+
+    duplicates = [c.phone.replace(" ", "") for c in Contact.query.filter_by(category_id=contact.category_id).all() if c.id != contact.id]
+    if normalized_check in duplicates:
+        flash('Phone already exists!', 'warning')
+        return redirect(url_for('view_contacts', category_id=contact.category_id))
+
+    contact.name, contact.phone = new_name, formatted_phone
     db.session.commit()
     flash("Contact updated!", "success")
     return redirect(url_for('view_contacts', category_id=contact.category_id))
 
 
+# --- Delete Contact ---
 @app.route('/delete_contact/<int:contact_id>', methods=['POST'])
 @login_required
 def delete_contact(contact_id):
@@ -238,7 +296,7 @@ def send_sms(category_id):
         flash("Message cannot be empty!", "danger")
         return redirect(url_for('view_contacts', category_id=category.id))
 
-    contacts = [c.phone for c in category.contacts]
+    contacts = [normalize_phone(c.phone) for c in category.contacts]
     if not contacts:
         flash("No contacts found!", "danger")
         return redirect(url_for('view_contacts', category_id=category.id))
